@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ActivePlus — Mobility Operations",
-  description: "The command center for rides, drivers, safety, and city operations.",
+  title: "ActivePlus — Move across the Netherlands",
+  description: "Book trusted rides across the Netherlands with upfront pricing, secure Dutch payments, and live traffic-aware routes.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

@@ -1,107 +1,160 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
-  const icons: Record<string, string> = {
-    grid: "▦", map: "⌖", users: "♧", car: "◆", shield: "◈", chart: "↗",
-    bell: "●", search: "⌕", pin: "●", clock: "◷", bolt: "ϟ", arrow: "→",
-    wallet: "▣", star: "★", headset: "◉", home: "⌂", briefcase: "▰",
-  };
-  return <span style={{ fontSize: size }} aria-hidden="true">{icons[name] || "•"}</span>;
+type Place = { name: string; longitude: number; latitude: number };
+type Quote = { distanceMeters: number; durationSeconds: number; fareCents: number; geometry: number[][] };
+type Ride = { id: string; status: string; pickupName: string; dropoffName: string; fareCents: number; createdAt: number };
+
+const quickPlaces: Record<string, Place> = {
+  "Amsterdam Centraal": { name: "Amsterdam Centraal, Stationsplein, Amsterdam", longitude: 4.9003, latitude: 52.3791 },
+  "Schiphol Airport": { name: "Schiphol Airport, Aankomstpassage, Schiphol", longitude: 4.7683, latitude: 52.3105 },
+  "Rotterdam Centraal": { name: "Rotterdam Centraal, Stationsplein, Rotterdam", longitude: 4.4699, latitude: 51.9244 },
 };
 
-const rides = [
-  { id: "AP-4821", rider: "Maya Chen", driver: "Jonas K.", route: "Mitte → BER Airport", fare: "€34.80", status: "En route", eta: "12 min", tone: "green" },
-  { id: "AP-4819", rider: "Luca Weber", driver: "Amara O.", route: "Kreuzberg → Charlottenburg", fare: "€18.40", status: "Pickup", eta: "3 min", tone: "blue" },
-  { id: "AP-4817", rider: "Nora Schmidt", driver: "David R.", route: "Wedding → Alexanderplatz", fare: "€14.20", status: "En route", eta: "8 min", tone: "green" },
-  { id: "AP-4814", rider: "Elias Bauer", driver: "Unassigned", route: "Neukölln → Tempelhof", fare: "€11.90", status: "Matching", eta: "—", tone: "amber" },
-];
-
-const drivers = [
-  { name: "Jonas K.", car: "Tesla Model 3", rating: "4.96", state: "On trip", avatar: "JK" },
-  { name: "Amara O.", car: "Toyota Corolla", rating: "4.92", state: "Pickup", avatar: "AO" },
-  { name: "David R.", car: "VW ID.4", rating: "4.89", state: "On trip", avatar: "DR" },
-  { name: "Sofia M.", car: "Hyundai Ioniq", rating: "4.98", state: "Available", avatar: "SM" },
-];
+const money = (cents: number) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(cents / 100);
 
 export default function Home() {
-  const [surface, setSurface] = useState<"ops" | "rider" | "driver">("ops");
-  const [activeNav, setActiveNav] = useState("Overview");
-  const [query, setQuery] = useState("");
-  const [toast, setToast] = useState("");
-  const [online, setOnline] = useState(true);
-  const [destination, setDestination] = useState("BER Airport, Terminal 1");
+  const [user, setUser] = useState<{ phone: string } | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authStep, setAuthStep] = useState<"phone" | "code">("phone");
+  const [phone, setPhone] = useState("06 ");
+  const [code, setCode] = useState("");
+  const [pickupText, setPickupText] = useState("");
+  const [dropoffText, setDropoffText] = useState("");
+  const [pickup, setPickup] = useState<Place | null>(null);
+  const [dropoff, setDropoff] = useState<Place | null>(null);
+  const [searchTarget, setSearchTarget] = useState<"pickup" | "dropoff" | null>(null);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const filtered = useMemo(() => rides.filter(r => `${r.id} ${r.rider} ${r.driver} ${r.route}`.toLowerCase().includes(query.toLowerCase())), [query]);
-  const act = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
+  useEffect(() => {
+    fetch("/api/auth/session").then((r) => r.json()).then((data) => setUser(data.user)).catch(() => {});
+    const payment = new URLSearchParams(window.location.search).get("payment");
+    if (payment === "success") setMessage("Payment received. Your ride request is now entering dispatch.");
+    if (payment === "cancelled") setMessage("Payment was cancelled. Your ride has not been requested.");
+  }, []);
 
-  return (
-    <main className="shell">
-      <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">A+</span><span>ActivePlus</span></div>
-        <nav aria-label="Main navigation">
-          <p className="eyebrow">Workspace</p>
-          {[ ["Overview","grid"], ["Live operations","map"], ["Riders","users"], ["Drivers","car"], ["Safety center","shield"], ["Finance","chart"] ].map(([label, icon]) => (
-            <button key={label} className={`nav-item ${activeNav === label ? "active" : ""}`} onClick={() => { setActiveNav(label); setSurface("ops"); }}>
-              <Icon name={icon}/><span>{label}</span>{label === "Safety center" && <b className="nav-count">3</b>}
-            </button>
-          ))}
-        </nav>
-        <div className="city-card"><div className="city-top"><span>Berlin market</span><span className="live-dot">Live</span></div><strong>98.4%</strong><small>Service health</small><div className="health"><i /></div></div>
-        <div className="sidebar-foot"><button className="nav-item"><Icon name="headset"/><span>Support desk</span></button><div className="profile"><div className="avatar">KW</div><div><strong>Kenneth W.</strong><small>Admin</small></div><button aria-label="Profile menu">•••</button></div></div>
-      </aside>
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/rides").then((r) => r.json()).then((data) => setRides(data.rides ?? [])).catch(() => {});
+  }, [user, message]);
 
-      <section className="workspace">
-        <header className="topbar">
-          <div className="surface-switch" aria-label="Choose product surface">
-            <button className={surface === "ops" ? "selected" : ""} onClick={() => setSurface("ops")}>Operations</button>
-            <button className={surface === "rider" ? "selected" : ""} onClick={() => setSurface("rider")}>Rider app</button>
-            <button className={surface === "driver" ? "selected" : ""} onClick={() => setSurface("driver")}>Driver app</button>
-          </div>
-          <div className="top-actions"><label className="search"><Icon name="search"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search trips, people, IDs" /></label><button className="icon-button" aria-label="Notifications"><Icon name="bell"/><i /></button><button className="primary" onClick={() => act("New ride request opened")}>+ New ride</button></div>
-        </header>
+  async function jsonCall(url: string, options?: RequestInit) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Something went wrong");
+    return data;
+  }
 
-        {surface === "ops" && <OpsView filtered={filtered} activeNav={activeNav} act={act} />}
-        {surface === "rider" && <RiderView destination={destination} setDestination={setDestination} act={act} />}
-        {surface === "driver" && <DriverView online={online} setOnline={setOnline} act={act} />}
-      </section>
-      {toast && <div className="toast"><span>✓</span>{toast}</div>}
-    </main>
-  );
-}
+  async function requestOtp(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    try { await jsonCall("/api/auth/request-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }); setAuthStep("code"); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Could not send code"); }
+    finally { setBusy(false); }
+  }
 
-function OpsView({ filtered, activeNav, act }: { filtered: typeof rides; activeNav: string; act: (s: string) => void }) {
-  return <div className="content">
-    <div className="page-heading"><div><p className="overline">Monday, 13 July · Berlin</p><h1>{activeNav === "Overview" ? "Good morning, Kenneth" : activeNav}</h1><p>Here’s what’s happening across ActivePlus right now.</p></div><div className="heading-actions"><button className="secondary" onClick={() => act("Report generated")}>Export report</button><button className="primary" onClick={() => act("Dispatch console ready")}>Open dispatch <Icon name="arrow"/></button></div></div>
-    <section className="metrics">
-      <Metric label="Gross bookings" value="€48,320" change="+12.4%" detail="vs. last Monday" accent="purple" bars={[28,38,31,48,42,62,70]} />
-      <Metric label="Active trips" value="1,284" change="+8.1%" detail="86 awaiting pickup" accent="blue" bars={[38,42,35,58,52,64,55]} />
-      <Metric label="Online drivers" value="742" change="+5.7%" detail="82% utilization" accent="green" bars={[30,35,42,39,48,58,64]} />
-      <Metric label="Avg. pickup" value="4m 18s" change="−32s" detail="Target: under 5m" accent="amber" bars={[65,58,61,52,49,42,36]} />
-    </section>
-    <section className="ops-grid">
-      <div className="panel map-panel"><div className="panel-head"><div><h2>Live demand</h2><p>Requests and driver supply</p></div><div className="legend"><span><i className="req"/>Requests</span><span><i className="drv"/>Drivers</span><button>⌄</button></div></div><div className="map">
-        <div className="road r1"/><div className="road r2"/><div className="road r3"/><div className="road r4"/><div className="river"/>
-        <span className="district d1">Wedding</span><span className="district d2">Mitte</span><span className="district d3">Kreuzberg</span><span className="district d4">Neukölln</span><span className="district d5">Friedrichshain</span>
-        {["p1","p2","p3","p4","p5","p6","p7"].map((p,i)=><i key={p} className={`map-pin ${p} ${i%3===0?"hot":""}`}>{i%3===0?"8":""}</i>)}
-        {["c1","c2","c3","c4","c5","c6"].map(p=><i key={p} className={`car-dot ${p}`}>◆</i>)}
-        <div className="map-stat"><span>Demand balance</span><strong>+6.2%</strong><small>Healthy supply</small></div><div className="zoom"><button>+</button><button>−</button></div>
+  async function verifyOtp(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    try { const data = await jsonCall("/api/auth/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code }) }); setUser({ phone: data.user.phone }); setAuthOpen(false); setMessage("You’re signed in. Welcome to ActivePlus."); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Verification failed"); }
+    finally { setBusy(false); }
+  }
+
+  async function findPlaces(target: "pickup" | "dropoff") {
+    const query = target === "pickup" ? pickupText : dropoffText;
+    if (query.trim().length < 3) { setMessage("Enter at least 3 characters to search."); return; }
+    setBusy(true); setSearchTarget(target); setMessage("");
+    try { const data = await jsonCall(`/api/places?q=${encodeURIComponent(query)}`); setPlaces(data.places); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Address search failed"); setPlaces([]); }
+    finally { setBusy(false); }
+  }
+
+  function choosePlace(place: Place) {
+    if (searchTarget === "pickup") { setPickup(place); setPickupText(place.name); }
+    else { setDropoff(place); setDropoffText(place.name); }
+    setPlaces([]); setSearchTarget(null); setQuote(null);
+  }
+
+  async function getQuote() {
+    if (!pickup || !dropoff) { setMessage("Select both addresses from the search results first."); return; }
+    setBusy(true); setMessage("");
+    try { setQuote(await jsonCall("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickup, dropoff }) })); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Could not calculate fare"); }
+    finally { setBusy(false); }
+  }
+
+  async function bookRide() {
+    if (!user) { setAuthOpen(true); setMessage("Sign in with your Dutch mobile number to continue."); return; }
+    if (!pickup || !dropoff || !quote) return;
+    setBusy(true); setMessage("");
+    try { const data = await jsonCall("/api/rides", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pickup, dropoff }) }); window.location.assign(data.checkoutUrl); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Ride booking failed"); }
+    finally { setBusy(false); }
+  }
+
+  function quickRoute(from: keyof typeof quickPlaces, to: keyof typeof quickPlaces) {
+    setPickup(quickPlaces[from]); setPickupText(quickPlaces[from].name); setDropoff(quickPlaces[to]); setDropoffText(quickPlaces[to].name); setQuote(null);
+    document.getElementById("book")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  async function logout() { await fetch("/api/auth/session", { method: "DELETE" }); setUser(null); setRides([]); setMessage("Signed out safely."); }
+
+  return <main>
+    <div className="ambient-glow glow-one"/><div className="ambient-glow glow-two"/><div className="ambient-glow glow-three"/>
+    <nav className="site-nav"><div className="nav-inner">
+      <a className="logo" href="#top">ACTIVE<span>PLUS</span><small>MOVE NL</small></a>
+      <div className="nav-links"><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#cities">Cities</a><a href="#drivers">Drive</a></div>
+      <button className="nav-cta" onClick={() => user ? logout() : setAuthOpen(true)}>{user ? "Sign out" : "Sign in"}</button>
+    </div></nav>
+
+    <section className="hero" id="top"><div className="hero-inner">
+      <div className="hero-content"><div className="hero-badge"><i/> Now moving across the Netherlands</div><h1><span>YOUR CITY.</span><span>YOUR RIDE.</span><em>right on time</em></h1><p>Book safe, transparent rides from Amsterdam to Rotterdam. Live routes by Mapbox, simple Dutch payments, and verified drivers.</p>
+        <div className="hero-stats"><div><b>24/7</b><span>Support</span></div><div><b>€0</b><span>Hidden fees</span></div><div><b>100%</b><span>Verified drivers</span></div></div>
+      </div>
+      <div className="booking-wrap" id="book"><div className="float-tag tag-one">iDEAL + cards</div><div className="float-tag tag-two">Live traffic ETA</div><div className="booking-card">
+        <div className="window-bar"><i/><i/><i/><span>BOOK A RIDE · NL</span></div>
+        <div className="route-fields">
+          <label><span className="route-icon pickup-icon"/><small>Pickup</small><div><input value={pickupText} onChange={(e) => { setPickupText(e.target.value); setPickup(null); setQuote(null); }} placeholder="Street, station or postcode"/><button onClick={() => findPlaces("pickup")} disabled={busy} aria-label="Search pickup">⌕</button></div></label>
+          <label><span className="route-icon dropoff-icon"/><small>Destination</small><div><input value={dropoffText} onChange={(e) => { setDropoffText(e.target.value); setDropoff(null); setQuote(null); }} placeholder="Where are you going?"/><button onClick={() => findPlaces("dropoff")} disabled={busy} aria-label="Search destination">⌕</button></div></label>
+        </div>
+        {places.length > 0 && <div className="search-results">{places.map((place) => <button key={`${place.longitude}-${place.latitude}`} onClick={() => choosePlace(place)}><i>⌖</i><span>{place.name}</span></button>)}</div>}
+        <div className="ride-options"><button className="ride-choice selected"><span className="vehicle">◆</span><span><b>Active</b><small>Everyday comfort · 4 seats</small></span>{quote && <strong>{money(quote.fareCents)}</strong>}</button><button className="ride-choice"><span className="vehicle green">✦</span><span><b>Active Green</b><small>Electric or hybrid</small></span><strong>{quote ? money(Math.max(895, quote.fareCents - 80)) : "—"}</strong></button></div>
+        {quote ? <div className="quote-line"><span><b>{Math.round(quote.durationSeconds / 60)} min</b><small>Estimated journey</small></span><span><b>{(quote.distanceMeters / 1000).toFixed(1)} km</b><small>Live traffic route</small></span><span><b>{money(quote.fareCents)}</b><small>Upfront price</small></span></div> : <button className="quote-btn" onClick={getQuote} disabled={busy}>{busy ? "Calculating…" : "Get live price"}<span>→</span></button>}
+        {quote && <button className="book-btn" onClick={bookRide} disabled={busy}>{user ? `Continue to payment · ${money(quote.fareCents)}` : "Sign in & book"}<span>→</span></button>}
+        <div className="powered"><span>ROUTING BY MAPBOX</span><span>PAYMENTS BY STRIPE</span></div>
       </div></div>
-      <div className="panel pulse-panel"><div className="panel-head"><div><h2>Market pulse</h2><p>Live performance</p></div><button>•••</button></div><div className="pulse-score"><div className="ring"><span>92</span><small>/100</small></div><div><strong>Excellent</strong><p>All core metrics are within target range.</p></div></div>
-        <Pulse label="Request completion" value="96.8%" width="97%"/><Pulse label="Driver acceptance" value="88.2%" width="88%"/><Pulse label="Rider satisfaction" value="4.89" width="94%"/>
-        <div className="surge"><div><span className="surge-icon">ϟ</span><div><strong>Surge active</strong><small>2 zones · max 1.4×</small></div></div><button onClick={() => act("Surge zones opened")}>View zones</button></div>
+    </div></section>
+
+    {message && <div className="notice" role="status"><span>+</span>{message}<button onClick={() => setMessage("")}>×</button></div>}
+
+    <section className="routes" id="cities"><div className="section-head"><div><small>POPULAR ROUTES</small><h2>MOVE <span>WITHOUT LIMITS</span></h2></div><p>One platform for local trips, airport transfers, and journeys between Dutch cities.</p></div>
+      <div className="route-grid">
+        <button className="route-card big" onClick={() => quickRoute("Amsterdam Centraal", "Schiphol Airport")}><div className="map-art amsterdam"><i/><b>AMS</b><span>Amsterdam</span></div><div><span>Airport favourite</span><h3>AMSTERDAM → SCHIPHOL</h3><p>Live traffic pricing · usually 18–28 min</p></div></button>
+        <button className="route-card" onClick={() => quickRoute("Rotterdam Centraal", "Amsterdam Centraal")}><div className="map-art rotterdam"><i/><b>RTM</b></div><div><span>Intercity</span><h3>ROTTERDAM → AMSTERDAM</h3><p>Comfortable door-to-door travel</p></div></button>
+        <article className="route-card metric-card"><div><small>ACTIVE COVERAGE</small><b>12</b><span>Dutch cities</span></div><div className="signal">{[40,58,72,48,86,65,94].map((h) => <i key={h} style={{ height: h }}/>)}</div></article>
       </div>
     </section>
-    <section className="panel trips"><div className="panel-head"><div><h2>Live trips</h2><p>{filtered.length} matching journeys</p></div><div className="trip-tabs"><button className="on">All trips</button><button>Needs attention <b>3</b></button><button>Completed</button></div></div>
-      <div className="table"><div className="tr th"><span>Trip</span><span>Rider & driver</span><span>Route</span><span>Fare</span><span>Status</span><span>ETA</span><span/></div>{filtered.map(r=><div className="tr" key={r.id}><span><strong>{r.id}</strong><small>Today, 10:{r.id.slice(-2)}</small></span><span><strong>{r.rider}</strong><small>{r.driver}</small></span><span className="route">{r.route}</span><span><strong>{r.fare}</strong></span><span><b className={`status ${r.tone}`}>{r.status}</b></span><span>{r.eta}</span><button aria-label={`Actions for ${r.id}`}>•••</button></div>)}</div>
-    </section>
-  </div>
+
+    <section className="steps" id="how"><div className="section-head"><div><small>FROM A TO B</small><h2>THREE STEPS. <span>ZERO FRICTION.</span></h2></div></div><div className="step-grid">
+      <article className="step featured"><b>01</b><div className="step-icon">⌖</div><h3>SET YOUR ROUTE</h3><p>Search any Dutch address, station, airport, or postcode. Mapbox calculates a traffic-aware route and ETA.</p><strong>LIVE</strong><small>traffic-aware pricing</small></article>
+      <article className="step"><b>02</b><div className="step-icon">◎</div><h3>VERIFY & PAY</h3><p>Secure your account with a one-time SMS code, then pay the upfront fare using iDEAL or your card.</p><strong>+31</strong><small>Dutch mobile login</small></article>
+      <article className="step"><b>03</b><div className="step-icon">↗</div><h3>MEET YOUR DRIVER</h3><p>Follow dispatch and trip status from request to arrival. Every trip creates a traceable service record.</p><strong>24/7</strong><small>ride support</small></article>
+    </div></section>
+
+    <section className="safety" id="safety"><div className="safety-copy"><small>ACTIVEPLUS SAFETY</small><h2>BUILT FOR TRUST.<br/><span>DESIGNED FOR CONTROL.</span></h2><p>Verified identities, server-side fares, signed sessions, traceable payment events, and a complete trip history form the safety foundation of every ActivePlus journey.</p><div className="safety-list"><span><i>✓</i>Dutch mobile verification</span><span><i>✓</i>Server-calculated pricing</span><span><i>✓</i>Secure Stripe Checkout</span><span><i>✓</i>Auditable ride lifecycle</span></div></div><div className="safety-console"><div className="console-head"><span>TRIP SAFETY LAYER</span><i>ACTIVE</i></div><div className="radar"><div/><div/><div/><b>A+</b><span className="pulse p1"/><span className="pulse p2"/><span className="pulse p3"/></div><div className="console-foot"><span><b>ENCRYPTED</b><small>Session</small></span><span><b>VERIFIED</b><small>Phone</small></span><span><b>TRACEABLE</b><small>Journey</small></span></div></div></section>
+
+    <section className="driver" id="drivers"><div><small>DRIVE WITH ACTIVEPLUS</small><h2>YOUR HOURS.<br/><span>YOUR INCOME.</span></h2><p>We’re onboarding licensed taxi and private-hire partners for our first Netherlands service areas.</p><button onClick={() => setMessage("Driver onboarding opens after the operator licence and screening process are configured.")}>Join the driver waitlist <span>→</span></button></div><div className="driver-stats"><article><small>Transparent</small><b>FARES</b><p>See the route and earnings before accepting.</p></article><article><small>Flexible</small><b>HOURS</b><p>Choose when and where you drive.</p></article><article><small>Local</small><b>SUPPORT</b><p>Human operations support in the Netherlands.</p></article></div></section>
+
+    {user && <section className="account"><div className="section-head"><div><small>YOUR ACCOUNT</small><h2>RECENT <span>RIDES</span></h2></div><p>Signed in as {user.phone}</p></div>{rides.length ? <div className="ride-history">{rides.map((ride) => <article key={ride.id}><span className={`ride-status ${ride.status}`}>{ride.status.replaceAll("_", " ")}</span><b>{ride.pickupName}</b><i>→</i><b>{ride.dropoffName}</b><strong>{money(ride.fareCents)}</strong><small>{ride.id}</small></article>)}</div> : <div className="empty-state">Your first ActivePlus ride will appear here.</div>}</section>}
+
+    <footer><div className="logo">ACTIVE<span>PLUS</span><small>MOVE NL</small></div><p>Transport technology for the Netherlands. Production service is subject to provider activation and local licensing.</p><div><a href="#safety">Safety</a><a href="#drivers">Drive</a><a href="mailto:support@activeplus.nl">Support</a></div><small>© 2026 ActivePlus · Design foundation adapted from TemplateMo Pixel Forge</small></footer>
+
+    {authOpen && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setAuthOpen(false)}><div className="auth-modal"><button className="modal-close" onClick={() => setAuthOpen(false)}>×</button><div className="auth-logo">A+</div><small>ACTIVEPLUS ID</small><h2>{authStep === "phone" ? "YOUR RIDE STARTS HERE" : "CHECK YOUR PHONE"}</h2><p>{authStep === "phone" ? "Enter your Dutch mobile number. We’ll send a one-time verification code by SMS." : `Enter the verification code sent to ${phone}.`}</p>
+      {authStep === "phone" ? <form onSubmit={requestOtp}><label>Dutch mobile number</label><div className="phone-input"><span>🇳🇱 +31</span><input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoFocus placeholder="06 12345678"/></div><button disabled={busy}>{busy ? "Sending…" : "Send secure code"}<span>→</span></button></form> : <form onSubmit={verifyOtp}><label>Verification code</label><input className="code-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" autoFocus placeholder="••••••"/><button disabled={busy}>{busy ? "Verifying…" : "Verify & continue"}<span>→</span></button><button type="button" className="text-btn" onClick={() => setAuthStep("phone")}>Use another number</button></form>}
+      <div className="auth-note">By continuing, you agree to the ActivePlus service terms and privacy notice.</div></div></div>}
+  </main>;
 }
-
-function Metric({label,value,change,detail,accent,bars}:{label:string;value:string;change:string;detail:string;accent:string;bars:number[]}) { return <article className={`metric ${accent}`}><div><p>{label}</p><h3>{value}</h3><span className="change">{change}</span><small>{detail}</small></div><div className="spark">{bars.map((h,i)=><i key={i} style={{height:h}} />)}</div></article> }
-function Pulse({label,value,width}:{label:string;value:string;width:string}) { return <div className="pulse"><div><span>{label}</span><strong>{value}</strong></div><div><i style={{width}} /></div></div> }
-
-function RiderView({destination,setDestination,act}:{destination:string;setDestination:(s:string)=>void;act:(s:string)=>void}) { return <div className="product-stage"><div className="product-copy"><p className="overline">ActivePlus Rider</p><h1>Go anywhere.<br/>Right on time.</h1><p>Book trusted rides across Berlin with clear prices, safer pickups, and support that stays with you.</p><div className="trust-row"><span>4.9 ★ rating</span><span>24/7 safety support</span><span>Upfront pricing</span></div></div><div className="phone rider-phone"><div className="phone-bar"><strong>A+</strong><span>09:41</span><span>● ● ●</span></div><div className="mini-map"><div className="route-line"/><i className="from"/><i className="to"/><span className="map-label one">Rosenthaler Platz</span><span className="map-label two">BER Airport</span></div><div className="ride-sheet"><span className="grab"/><h2>Where to?</h2><label><i className="current"/><input defaultValue="Rosenthaler Platz 1" /></label><label><i className="destination"/><input value={destination} onChange={e=>setDestination(e.target.value)} /></label><div className="quick"><button><Icon name="home"/>Home</button><button><Icon name="briefcase"/>Work</button><button><Icon name="clock"/>Later</button></div><h3>Choose a ride</h3><button className="ride-option chosen"><span className="ride-emoji">◆</span><span><strong>Active</strong><small>4 min away · 4 seats</small></span><span><strong>€34.80</strong><small>€38.20</small></span></button><button className="ride-option"><span className="ride-emoji eco">✦</span><span><strong>Active Green</strong><small>7 min away · Electric</small></span><span><strong>€31.40</strong></span></button><button className="book" onClick={()=>act("Ride booked — Jonas arrives in 4 min")}>Book Active · €34.80</button></div></div></div> }
-
-function DriverView({online,setOnline,act}:{online:boolean;setOnline:(v:boolean)=>void;act:(s:string)=>void}) { return <div className="product-stage driver-stage"><div className="product-copy"><p className="overline">ActivePlus Driver</p><h1>Drive your day.<br/>Own your time.</h1><p>See demand, earnings, and trip details in one calm workspace designed to keep drivers moving.</p><div className="earnings-card"><span>Today’s earnings</span><strong>€184.60</strong><small>6h 24m online · 14 trips</small><div><i style={{width:"78%"}}/></div><p><b>€28.84/hr</b><span>+16% vs. weekly avg.</span></p></div></div><div className="phone driver-phone"><div className="driver-map"><div className="phone-bar dark"><strong>A+</strong><span>09:41</span><span>● ● ●</span></div><div className="heat h1"/><div className="heat h2"/><div className="heat h3"/><span className="district dx1">Mitte</span><span className="district dx2">Kreuzberg</span><div className="driver-marker">◆</div><div className="driver-top"><span>{online?"You’re online":"You’re offline"}</span><button className={online?"toggle on":"toggle"} onClick={()=>setOnline(!online)}><i/></button></div></div><div className="driver-sheet"><span className="grab"/><div className="request-head"><div><p>New trip request</p><strong>€18–€22</strong></div><span>12<small>sec</small></span></div><div className="request-route"><div><i/><b/><i/></div><p><strong>2 min (0.7 km) away</strong><small>Kastanienallee 22</small><strong>18 min (8.4 km) trip</strong><small>Kantstraße 74</small></p></div><div className="request-meta"><span><b>4.92</b> ★ rider</span><span><b>Active</b> ride</span><span><b>€3.40</b> bonus</span></div><button className="accept" disabled={!online} onClick={()=>act("Trip accepted — navigating to pickup")}>{online?"Accept trip":"Go online to accept"}</button><button className="decline" onClick={()=>act("Trip declined")}>Decline</button></div></div></div> }
