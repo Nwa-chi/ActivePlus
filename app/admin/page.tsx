@@ -2,6 +2,7 @@ import { requireAdminPage } from "@/app/lib/admin";
 import Link from "next/link";
 import AdminPortal from "./AdminPortal";
 import "./admin.css";
+import "./development.css";
 
 export const dynamic = "force-dynamic";
 

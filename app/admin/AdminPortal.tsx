@@ -11,10 +11,26 @@ const money = (cents = 0) => new Intl.NumberFormat("nl-NL", { style: "currency",
 const dateTime = (value: number) => new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Amsterdam" }).format(value);
 const labels: Record<string, string> = { payment_pending: "Payment pending", requested: "Requested", matched: "Matched", driver_arriving: "Driver arriving", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled", refunded: "Refunded" };
 const transitions: Record<string, string[]> = { payment_pending: ["cancelled"], requested: ["matched", "cancelled"], matched: ["driver_arriving", "cancelled"], driver_arriving: ["in_progress", "cancelled"], in_progress: ["completed", "cancelled"], completed: [], cancelled: [], refunded: [] };
+const developmentMilestones = [
+  { area: "Product foundation", detail: "Customer booking flow, responsive interface, and Netherlands-focused service design", progress: 100, status: "complete" },
+  { area: "Private administration", detail: "Secured operations portal, ride controls, refunds, audit history, and progress reporting", progress: 100, status: "complete" },
+  { area: "Phone verification", detail: "Dutch +31 verification flow is coded; production Twilio activation and live tests remain", progress: 70, status: "in_progress" },
+  { area: "Navigation", detail: "Address search, traffic-aware route quotes, and fare calculation are coded; production Mapbox activation remains", progress: 75, status: "in_progress" },
+  { area: "Payments", detail: "iDEAL and card checkout, webhook verification, and refund controls are coded; production Stripe activation remains", progress: 70, status: "in_progress" },
+  { area: "Netherlands hosting", detail: "A Netherlands-resident production environment must be selected and configured", progress: 10, status: "blocked" },
+  { area: "Custom domain", detail: "attivplus.com is reserved but will remain disconnected until private acceptance testing is complete", progress: 25, status: "pending" },
+  { area: "Operational launch", detail: "Licensing, drivers, insurance, GDPR documents, customer support, and incident procedures remain", progress: 15, status: "pending" },
+];
+const developmentActivity = [
+  { date: "18 Jul 2026", title: "Private progress portal added", detail: "Development milestones and launch gates are now visible to administrators." },
+  { date: "18 Jul 2026", title: "Public deployment held", detail: "No customer DNS records or public production hosting were activated." },
+  { date: "18 Jul 2026", title: "Location controls corrected", detail: "The incorrectly located cloud resources were removed and no foreign region is hard-coded." },
+  { date: "18 Jul 2026", title: "Production code validated", detail: "Build, lint, security-focused tests, and production dependency checks passed." },
+];
 
 export default function AdminPortal({ initialAdmin }: { initialAdmin: { name: string; email: string } }) {
   const [data, setData] = useState<Dashboard | null>(null);
-  const [section, setSection] = useState("overview");
+  const [section, setSection] = useState("development");
   const [status, setStatus] = useState("all");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Ride | null>(null);
@@ -33,7 +49,7 @@ export default function AdminPortal({ initialAdmin }: { initialAdmin: { name: st
     finally { if (!quiet) setBusy(false); }
   }, []);
 
-  useEffect(() => { load(); const timer = window.setInterval(() => load(true), 30000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => { if (section === "development") return; load(); const timer = window.setInterval(() => load(true), 30000); return () => window.clearInterval(timer); }, [load, section]);
 
   const rides = useMemo(() => (data?.rides ?? []).filter((ride) => (status === "all" || ride.status === status) && `${ride.id} ${ride.pickupName} ${ride.dropoffName} ${ride.riderPhone}`.toLowerCase().includes(query.toLowerCase())), [data, status, query]);
   const customers = useMemo(() => (data?.customers ?? []).filter((customer) => `${customer.phone} ${customer.name ?? ""} ${customer.role}`.toLowerCase().includes(query.toLowerCase())), [data, query]);
@@ -58,14 +74,15 @@ export default function AdminPortal({ initialAdmin }: { initialAdmin: { name: st
 
   return <main className="admin-shell">
     <aside className="admin-sidebar"><a className="admin-brand" href="/admin"><span>A+</span><div>ACTIVEPLUS<small>COMMAND</small></div></a><p className="side-label">Operations</p>
-      <nav>{[["overview","▦","Overview"],["rides","⌁","Live rides"],["customers","♙","Customers"],["security","◈","Security"],["audit","≡","Audit trail"]].map(([id, icon, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}><i>{icon}</i>{label}{id === "rides" && liveTrips > 0 && <b>{liveTrips}</b>}</button>)}</nav>
+      <nav>{[["development","◫","Development"],["overview","▦","Overview"],["rides","⌁","Live rides"],["customers","♙","Customers"],["security","◈","Security"],["audit","≡","Audit trail"]].map(([id, icon, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}><i>{icon}</i>{label}{id === "rides" && liveTrips > 0 && <b>{liveTrips}</b>}</button>)}</nav>
       <div className="side-health"><div><i/>System status</div><strong>{data && Object.values(data.providerHealth).every(Boolean) ? "Operational" : "Setup required"}</strong><span>{data ? `${Object.values(data.providerHealth).filter(Boolean).length}/4 services online` : "Checking services"}</span></div>
       <div className="side-user"><span>{initialAdmin.name.slice(0,2).toUpperCase()}</span><div><b>{initialAdmin.name}</b><small>Administrator</small></div><a href="/api/admin/auth/logout" title="Sign out">↗</a></div>
     </aside>
 
-    <section className="admin-workspace"><header className="admin-topbar"><div><span className="env-badge"><i/>PRODUCTION</span><b>Netherlands Operations</b></div><div className="top-tools"><button className="refresh" onClick={() => load()} disabled={busy}>↻ <span>{busy ? "Refreshing" : "Refresh"}</span></button><span className="updated">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}` : "Loading live data"}</span><a href="/" target="_blank">Open rider app ↗</a></div></header>
+    <section className="admin-workspace"><header className="admin-topbar"><div><span className="env-badge private"><i/>PRIVATE DEVELOPMENT</span><b>Netherlands Operations</b></div><div className="top-tools"><button className="refresh" onClick={() => load()} disabled={busy || section === "development"}>↻ <span>{busy ? "Refreshing" : "Refresh"}</span></button><span className="updated">{section === "development" ? "Public launch disabled" : lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}` : "Loading live data"}</span><a href="/" target="_blank">Preview rider app ↗</a></div></header>
       <div className="admin-content">
         {error && <div className="admin-error"><span>!</span>{error}<button onClick={() => setError("")}>×</button></div>}
+        {section === "development" && <Development />}
         {section === "overview" && <Overview data={data} rides={rides} liveTrips={liveTrips} openRide={openRide} setSection={setSection} />}
         {section === "rides" && <Rides data={data} rides={rides} query={query} setQuery={setQuery} status={status} setStatus={setStatus} openRide={openRide} />}
         {section === "customers" && <Customers customers={customers} query={query} setQuery={setQuery} />}
@@ -87,6 +104,15 @@ export default function AdminPortal({ initialAdmin }: { initialAdmin: { name: st
 }
 
 function PageTitle({ eyebrow, title, text, action }: { eyebrow: string; title: string; text: string; action?: React.ReactNode }) { return <div className="admin-heading"><div><small>{eyebrow}</small><h1>{title}</h1><p>{text}</p></div>{action}</div> }
+function Development() {
+  const complete = developmentMilestones.filter((item) => item.status === "complete").length;
+  const overall = Math.round(developmentMilestones.reduce((sum, item) => sum + item.progress, 0) / developmentMilestones.length);
+  return <><PageTitle eyebrow="PRIVATE BUILD CONTROL" title="Development progress" text="Track engineering completion, integrations, hosting decisions, and every remaining launch gate while the public domain stays offline." action={<span className="public-offline"><i/>PUBLIC WEBSITE OFFLINE</span>}/>
+    <div className="development-kpis"><article><small>Engineering progress</small><b>{overall}%</b><div><i style={{width:`${overall}%`}}/></div><span>Across all tracked workstreams</span></article><article><small>Completed milestones</small><b>{complete}/{developmentMilestones.length}</b><span>Production code and private controls</span></article><article><small>Provider activation</small><b>0/3</b><span>Twilio, Mapbox, and Stripe pending</span></article><article className="offline-card"><small>Public exposure</small><b>OFF</b><span>Domain remains disconnected</span></article></div>
+    <div className="development-grid"><section className="admin-panel milestone-panel"><div className="panel-title"><div><h2>Build workstreams</h2><p>Current completion and the next concrete requirement</p></div><span className="private-chip">ADMIN ONLY</span></div><div className="milestone-list">{developmentMilestones.map((item)=><article key={item.area}><div className={`milestone-state ${item.status}`}>{item.status === "complete" ? "✓" : item.status === "blocked" ? "!" : item.status === "in_progress" ? "↻" : "·"}</div><div className="milestone-copy"><div><b>{item.area}</b><span className={item.status}>{item.status.replace("_", " ")}</span></div><p>{item.detail}</p><div className="milestone-progress"><i style={{width:`${item.progress}%`}}/></div></div><strong>{item.progress}%</strong></article>)}</div></section>
+    <aside className="admin-panel development-side"><div className="panel-title"><div><h2>Recent development</h2><p>Verified changes and decisions</p></div></div><div className="activity-list">{developmentActivity.map((item)=><article key={item.title}><i/><div><small>{item.date}</small><b>{item.title}</b><p>{item.detail}</p></div></article>)}</div><div className="launch-hold"><span>◈</span><div><b>Launch hold is active</b><p>Production DNS, public hosting, and customer onboarding remain disabled until every acceptance gate is approved.</p></div></div></aside></div>
+  </>;
+}
 function Overview({ data, rides, liveTrips, openRide, setSection }: { data: Dashboard | null; rides: Ride[]; liveTrips: number; openRide: (r: Ride) => void; setSection: (s:string)=>void }) {
   const s = data?.summary; return <><PageTitle eyebrow="LIVE COMMAND CENTER" title="ActivePlus operations" text="Monitor service performance, payments, customers, and active journeys across the Netherlands." action={<button className="header-action" onClick={() => setSection("rides")}>Open dispatch →</button>}/>
     <div className="admin-kpis"><Kpi label="Gross bookings" value={money(Number(s?.grossCents ?? 0))} note="Paid ride value" tone="violet"/><Kpi label="Active trips" value={String(liveTrips)} note={`${data?.statuses.find((x)=>x.status==="requested")?.count ?? 0} awaiting dispatch`} tone="cyan"/><Kpi label="Customers" value={String(s?.activeCustomers ?? 0)} note={`${s?.totalRides ?? 0} total bookings`} tone="green"/><Kpi label="Avg. journey" value={`${Math.round(Number(s?.avgDuration ?? 0)/60)} min`} note="Across all records" tone="amber"/></div>

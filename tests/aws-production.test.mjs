@@ -38,3 +38,15 @@ test("keeps rider and administrator sessions isolated", async () => {
   assert.match(adminRoute, /CognitoJwtVerifier/);
   assert.match(adminRoute, /email_verified/);
 });
+
+test("keeps development progress private and public launch disabled", async () => {
+  const [adminGuard, portal] = await Promise.all([
+    readFile(new URL("app/lib/admin.ts", root), "utf8"),
+    readFile(new URL("app/admin/AdminPortal.tsx", root), "utf8"),
+  ]);
+  assert.match(adminGuard, /NODE_ENV !== "development"/);
+  assert.match(adminGuard, /DEV_ADMIN_EMAIL/);
+  assert.match(portal, /Development progress/);
+  assert.match(portal, /PUBLIC WEBSITE OFFLINE/);
+  assert.match(portal, /Public launch disabled/);
+});

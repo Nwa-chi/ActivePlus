@@ -6,17 +6,27 @@ function allowlist() {
   return new Set((process.env.ADMIN_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
 }
 
+function localDevelopmentAdmin(): AdminSession | null {
+  if (process.env.NODE_ENV !== "development") return null;
+  const email = process.env.DEV_ADMIN_EMAIL?.trim().toLowerCase() || "developer@attivplus.local";
+  return { email, name: "AttivPlus Development", exp: Date.now() + 60 * 60 * 1000 };
+}
+
 export function isAdminEmail(email: string) {
   return allowlist().has(email.trim().toLowerCase());
 }
 
 export async function requireAdminPage(returnTo = "/admin") {
+  const localUser = localDevelopmentAdmin();
+  if (localUser) return { user: localUser, allowed: true };
   const user = await currentAdminSession();
   if (!user) redirect(`/api/admin/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   return { user, allowed: isAdminEmail(user.email) };
 }
 
 export async function requireAdminApi(): Promise<AdminSession | null> {
+  const localUser = localDevelopmentAdmin();
+  if (localUser) return localUser;
   const user = await currentAdminSession();
   return user && isAdminEmail(user.email) ? user : null;
 }
