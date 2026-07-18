@@ -45,7 +45,7 @@ export type AuditRecord = {
   createdAt: number;
 };
 
-const region = process.env.AWS_REGION || "eu-central-1";
+const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
 const tableName = process.env.ACTIVEPLUS_TABLE_NAME || "ActivePlusProduction";
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
   marshallOptions: { removeUndefinedValues: true },
