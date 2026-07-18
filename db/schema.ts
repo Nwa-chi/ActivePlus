@@ -11,7 +11,7 @@ export const users = sqliteTable("users", {
 export const rides = sqliteTable("rides", {
   id: text("id").primaryKey(),
   riderId: text("rider_id").notNull().references(() => users.id),
-  status: text("status", { enum: ["payment_pending", "requested", "matched", "driver_arriving", "in_progress", "completed", "cancelled"] }).notNull(),
+  status: text("status", { enum: ["payment_pending", "requested", "matched", "driver_arriving", "in_progress", "completed", "cancelled", "refunded"] }).notNull(),
   pickupName: text("pickup_name").notNull(),
   pickupLng: integer("pickup_lng_e6").notNull(),
   pickupLat: integer("pickup_lat_e6").notNull(),
@@ -33,3 +33,13 @@ export const rideEvents = sqliteTable("ride_events", {
   detail: text("detail"),
   createdAt: integer("created_at").notNull(),
 }, (table) => [index("ride_events_ride_idx").on(table.rideId)]);
+
+export const adminAudit = sqliteTable("admin_audit", {
+  id: text("id").primaryKey(),
+  actorEmail: text("actor_email").notNull(),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  detail: text("detail"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [index("admin_audit_created_idx").on(table.createdAt), index("admin_audit_entity_idx").on(table.entityType, table.entityId)]);

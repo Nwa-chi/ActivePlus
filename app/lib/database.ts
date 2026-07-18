@@ -11,10 +11,13 @@ export async function ensureSchema() {
     db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY NOT NULL, phone TEXT NOT NULL UNIQUE, role TEXT NOT NULL DEFAULT 'rider', name TEXT, created_at INTEGER NOT NULL)`),
     db.prepare(`CREATE TABLE IF NOT EXISTS rides (id TEXT PRIMARY KEY NOT NULL, rider_id TEXT NOT NULL REFERENCES users(id), status TEXT NOT NULL, pickup_name TEXT NOT NULL, pickup_lng_e6 INTEGER NOT NULL, pickup_lat_e6 INTEGER NOT NULL, dropoff_name TEXT NOT NULL, dropoff_lng_e6 INTEGER NOT NULL, dropoff_lat_e6 INTEGER NOT NULL, distance_meters INTEGER NOT NULL, duration_seconds INTEGER NOT NULL, fare_cents INTEGER NOT NULL, stripe_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
     db.prepare(`CREATE TABLE IF NOT EXISTS ride_events (id TEXT PRIMARY KEY NOT NULL, ride_id TEXT NOT NULL REFERENCES rides(id), type TEXT NOT NULL, detail TEXT, created_at INTEGER NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS admin_audit (id TEXT PRIMARY KEY NOT NULL, actor_email TEXT NOT NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, detail TEXT, created_at INTEGER NOT NULL)`),
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique ON users(phone)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS rides_rider_idx ON rides(rider_id)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS rides_status_idx ON rides(status)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS ride_events_ride_idx ON ride_events(ride_id)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit(created_at)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS admin_audit_entity_idx ON admin_audit(entity_type, entity_id)`),
   ]);
   return db;
 }
