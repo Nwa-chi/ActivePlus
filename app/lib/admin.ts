@@ -1,5 +1,6 @@
-import { getChatGPTUser, requireChatGPTUser, type ChatGPTUser } from "@/app/chatgpt-auth";
-import { ensureSchema } from "@/app/lib/database";
+import { redirect } from "next/navigation";
+import { currentAdminSession, type AdminSession } from "@/app/lib/admin-session";
+import { recordAudit } from "@/app/lib/database";
 
 function allowlist() {
   return new Set((process.env.ADMIN_EMAILS ?? "").split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
@@ -10,19 +11,18 @@ export function isAdminEmail(email: string) {
 }
 
 export async function requireAdminPage(returnTo = "/admin") {
-  const user = await requireChatGPTUser(returnTo);
+  const user = await currentAdminSession();
+  if (!user) redirect(`/api/admin/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   return { user, allowed: isAdminEmail(user.email) };
 }
 
-export async function requireAdminApi(): Promise<ChatGPTUser | null> {
-  const user = await getChatGPTUser();
+export async function requireAdminApi(): Promise<AdminSession | null> {
+  const user = await currentAdminSession();
   return user && isAdminEmail(user.email) ? user : null;
 }
 
 export async function audit(actorEmail: string, action: string, entityType: string, entityId: string, detail?: Record<string, unknown>) {
-  const db = await ensureSchema();
-  await db.prepare("INSERT INTO admin_audit (id, actor_email, action, entity_type, entity_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(crypto.randomUUID(), actorEmail.toLowerCase(), action, entityType, entityId, detail ? JSON.stringify(detail) : null, Date.now()).run();
+  await recordAudit({ id: crypto.randomUUID(), actorEmail: actorEmail.toLowerCase(), action, entityType, entityId, detail: detail ? JSON.stringify(detail) : null, createdAt: Date.now() });
 }
 
 export function forbidden() {

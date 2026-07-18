@@ -1,4 +1,4 @@
-import { ensureSchema } from "@/app/lib/database";
+import { confirmRidePayment } from "@/app/lib/database";
 
 function safeEqual(a: string, b: string) {
   if (a.length !== b.length) return false;
@@ -19,11 +19,7 @@ export async function POST(request: Request) {
   if (!parts.t || !parts.v1 || Math.abs(Date.now() / 1000 - Number(parts.t)) > 300 || !safeEqual(await hmacHex(secret, `${parts.t}.${body}`), parts.v1)) return new Response("Invalid signature", { status: 400 });
   const event = JSON.parse(body) as { type: string; data?: { object?: { id?: string; payment_status?: string; metadata?: { ride_id?: string } } } };
   if (event.type === "checkout.session.completed" && event.data?.object?.payment_status === "paid" && event.data.object.metadata?.ride_id) {
-    const db = await ensureSchema(); const rideId = event.data.object.metadata.ride_id; const now = Date.now();
-    await db.batch([
-      db.prepare("UPDATE rides SET status = 'requested', updated_at = ? WHERE id = ? AND status = 'payment_pending'").bind(now, rideId),
-      db.prepare("INSERT INTO ride_events (id, ride_id, type, detail, created_at) VALUES (?, ?, 'payment_confirmed', ?, ?)").bind(crypto.randomUUID(), rideId, event.data.object.id ?? null, now),
-    ]);
+    await confirmRidePayment(event.data.object.metadata.ride_id, event.data.object.id ?? null);
   }
   return Response.json({ received: true });
 }
