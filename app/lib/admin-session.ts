@@ -7,6 +7,15 @@ const encoder = new TextEncoder();
 export type AdminSession = { email: string; name: string; exp: number };
 export type AdminFlow = { state: string; verifier: string; returnTo: string; exp: number };
 
+type AzurePrincipal = {
+  auth_typ?: string;
+  claims?: Array<{ typ?: string; val?: string }>;
+};
+
+export function adminAuthProvider() {
+  return process.env.ADMIN_AUTH_PROVIDER?.trim().toLowerCase() === "azure" ? "azure" : "cognito";
+}
+
 function secret() {
   const value = process.env.SESSION_SECRET;
   if (!value || value.length < 32) throw new Error("SESSION_SECRET must contain at least 32 characters");
@@ -51,7 +60,35 @@ export async function readAdminCookie(cookieHeader: string): Promise<AdminSessio
 
 export async function currentAdminSession() {
   const requestHeaders = await headers();
+  if (adminAuthProvider() === "azure") return azureAdminSession(requestHeaders);
   return readAdminCookie(requestHeaders.get("cookie") ?? "");
+}
+
+function azureAdminSession(requestHeaders: Headers): AdminSession | null {
+  // Azure App Service Authentication injects this header after validating the
+  // Entra session. Requiring App Service runtime variables prevents accidental
+  // trust of a caller-supplied header on other hosts.
+  if (!process.env.WEBSITE_SITE_NAME || !process.env.WEBSITE_HOSTNAME) return null;
+  const encoded = requestHeaders.get("x-ms-client-principal");
+  if (!encoded) return null;
+  try {
+    const principal = JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as AzurePrincipal;
+    if (principal.auth_typ?.toLowerCase() !== "aad" || !Array.isArray(principal.claims)) return null;
+    const claims = new Map(principal.claims.flatMap((claim) => claim.typ && claim.val ? [[claim.typ.toLowerCase(), claim.val]] : []));
+    const email = [
+      "preferred_username",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn",
+      "email",
+    ].map((key) => claims.get(key)?.trim().toLowerCase()).find(Boolean);
+    if (!email || !email.includes("@")) return null;
+    const name = claims.get("name")?.trim()
+      || claims.get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.trim()
+      || email.split("@")[0];
+    return { email, name, exp: Date.now() + 60 * 60 * 1000 };
+  } catch {
+    return null;
+  }
 }
 
 export async function createFlowCookie(flow: Omit<AdminFlow, "exp">) {

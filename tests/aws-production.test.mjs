@@ -39,6 +39,20 @@ test("keeps rider and administrator sessions isolated", async () => {
   assert.match(adminRoute, /email_verified/);
 });
 
+test("supports a fail-closed Azure administrator identity migration", async () => {
+  const [admin, login, logout] = await Promise.all([
+    readFile(new URL("app/lib/admin-session.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/auth/login/route.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/auth/logout/route.ts", root), "utf8"),
+  ]);
+  assert.match(admin, /ADMIN_AUTH_PROVIDER/);
+  assert.match(admin, /WEBSITE_SITE_NAME/);
+  assert.match(admin, /WEBSITE_HOSTNAME/);
+  assert.match(admin, /x-ms-client-principal/);
+  assert.match(login, /\.auth\/login\/aad/);
+  assert.match(logout, /\.auth\/logout/);
+});
+
 test("keeps development progress private and public launch disabled", async () => {
   const [adminGuard, portal] = await Promise.all([
     readFile(new URL("app/lib/admin.ts", root), "utf8"),
